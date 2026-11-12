@@ -1,3 +1,0 @@
-import cure
-
-cure.patch()
