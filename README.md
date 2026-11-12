@@ -37,12 +37,6 @@ Note that our implementation does not support distributed training across multip
 
 Matplotlib is required to draw learning curves.
 
-### Extras
-
-Install the following to run `visualize.py`.
-
-- Pydot (with GraphViz)
-
 ## Model Zoo
 
 We provide these pre-trained generators on common datasets in the `models` folder.
@@ -227,11 +221,6 @@ To perform transfer learning and fine-tuning, you can use a combination of the `
 Here are some examples of Cure Twinkle transferred from Cure Beauty v2, which was trained on approximately 300 images.
 
 ![Cure Twinkle (Transferred)](examples/transfer.png)
-
-### `visualize.py`
-
-This script draws computation graphs for debugging (Pydot and GraphViz are required).
-Use the `-h` option for more details.
 
 ### Small Tools
 
