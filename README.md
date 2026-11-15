@@ -1,6 +1,8 @@
-# Precure StyleGAN ADA
+# Precure StyleGAN ADA (PyTorch ver.)
 
-StyleGAN 2.0 implementation using Chainer with Adaptive Discriminator Augmentation
+StyleGAN 2.0 implementation with Adaptive Discriminator Augmentation
+
+This project was ported from [Chainer implementation](https://github.com/curegit/precure-stylegan-ada) to continue with further maintenance.
 
 ## Abstract
 
