@@ -2,10 +2,10 @@
 
 from sys import exit, argv
 from os.path import basename, realpath
-from chainer.iterators import SerialIterator
-from stylegan.dataset import ImageDataset, MulticategoryImageDataset
-from stylegan.networks import Generator
-from stylegan.layers.discriminator import Discriminator
+from copy import deepcopy
+import torch
+from stylegan.dataset import ImageDataset, MulticategoryImageDataset, TrainingIterator
+from stylegan.networks import Generator, Discriminator
 from stylegan.training import AdamSet, CustomUpdater, CustomTrainer
 from stylegan.augmentation import AugmentationPipeline
 from interface.args import dump_json, CustomArgumentParser
@@ -13,11 +13,10 @@ from interface.argtypes import uint, natural, ufloat, positive, rate
 from interface.stdout import chainer_like_tqdm, print_model_args, print_parameter_counts, print_cnn_architecture, print_data_classes, print_training_args
 from utilities.stdio import eprint
 from utilities.filesys import mkdirs, build_filepath
-from utilities.chainer import config_train
 
 
 def main(args):
-    config_train()
+    torch.backends.cudnn.benchmark = True
     print("Initializing models...")
     categories = len(args.dataset)
     if args.snapshot is not None:
@@ -29,10 +28,9 @@ def main(args):
     else:
         generator = Generator(args.size, args.depth, args.levels, *args.channels, categories)
         discriminator = Discriminator(args.levels, args.channels[1], args.channels[0], categories, args.depth, group_size=args.group)
-    averaged_generator = generator.copy("copy")
-    generator.to_device(args.device)
-    discriminator.to_device(args.device)
-    averaged_generator.to_device(args.device)
+    generator.to(args.device)
+    discriminator.to(args.device)
+    averaged_generator = deepcopy(generator).eval().requires_grad_(False)
     print_model_args(generator)
     print_parameter_counts(generator, discriminator)
     print_cnn_architecture(generator, discriminator, None if args.transfer is None else args.transfer[1:3], args.freeze)
@@ -59,7 +57,7 @@ def main(args):
             dataset.preload(lambda: bar.update())
     print("Setting up training...")
     print_training_args(args)
-    iterator = SerialIterator(dataset, args.batch, repeat=True, shuffle=True)
+    iterator = TrainingIterator(dataset, args.batch)
     updater = CustomUpdater(generator, averaged_generator, discriminator, iterator, optimizers, args.ema, args.lsgan)
     if args.accum is not None:
         updater.enable_gradient_accumulation(args.accum)
@@ -78,7 +76,7 @@ def main(args):
         print(f"- filtering: {args.filtering * 100}%")
         print(f"- noise: {args.noise * 100}%")
         pipeline = AugmentationPipeline(args.pixel, args.geometric, args.color, args.filtering, args.noise)
-        pipeline.to_device(args.device)
+        pipeline.to(args.device)
         updater.enable_adaptive_augumentation(pipeline, args.target, args.limit, args.delta)
     if args.sleep:
         print("Throttling enabled")
@@ -109,15 +107,17 @@ def main(args):
     if args.epoch != 0:
         trainer.run()
     print("Saving results...")
-    gen_path = build_filepath(args.dest, "generator", "hdf5", args.force)
+    gen_path = build_filepath(args.dest, "generator", "pt", args.force)
     averaged_generator.save(gen_path)
     print(f"Saved: {gen_path}")
-    up_path = build_filepath(args.dest, "snapshot", "hdf5", args.force)
+    up_path = build_filepath(args.dest, "snapshot", "pt", args.force)
     updater.save_states(up_path)
     print(f"Saved: {up_path}")
 
 
 def check_args(args):
+    if any(beta >= 1 for beta in args.betas):
+        raise ValueError("Adam betas must be less than 1")
     if args.group != 0 and args.group > args.batch:
         eprint("Group size must be less than or equal to batch size!")
         raise RuntimeError("Argument conflict")
@@ -192,10 +192,10 @@ def parse_args():
     parser.add_argument("-p", "--preload", action="store_true", help="preload the whole dataset into the RAM")
     parser.add_argument("-l", "--labels", metavar="CLASS", nargs="*", help="embed data class labels into output generators (e.g., cat, dog, ...) (specify as many CLASS as dataset directories), dataset directory names are used automatically if no CLASS arguments are given")
     group = parser.add_argument_group("training arguments")
-    group.add_argument("-s", "--snapshot", metavar="HDF5_FILE", help="load weights and parameters from a snapshot (for resuming)")
-    group.add_argument("-t", "--transfer", metavar=("HDF5_FILE", "{G|all}", "{D|all}"), nargs=3, help="import CNN weights from another snapshot (transfer learning), transfer generator/discriminator CNN blocks to levels only above/below level G/D (inclusive) from corresponding ones aligned from the top/bottom level, specify 'all' to transfer all blocks")
+    group.add_argument("-s", "--snapshot", metavar="PT_FILE", help="resume from a PyTorch training snapshot (.pt), including optimizer states and iteration")
+    group.add_argument("-t", "--transfer", metavar=("PT_FILE", "{G|all}", "{D|all}"), nargs=3, help="import CNN weights from another PyTorch training snapshot (transfer learning), transfer generator/discriminator CNN blocks to levels only above/below level G/D (inclusive) from corresponding ones aligned from the top/bottom level, specify 'all' to transfer all blocks")
     group.add_argument("-Z", "--freeze", metavar=("G", "D"), nargs=2, type=uint, help="disable updating generator/discriminator CNN blocks above/below level G/D (inclusive), likely used with --transfer")
-    group.add_argument("-e", "--epoch", metavar="N", type=uint, default=1, help="training duration in epoch (note that elapsed training duration will not be serialized in snapshots)")
+    group.add_argument("-e", "--epoch", metavar="N", type=uint, default=1, help="number of additional epochs to run (also when resuming)")
     group.add_argument("-b", "--batch", metavar="N", type=natural, default=16, help="batch size, affecting not only memory usage, but also training result")
     group.add_argument("-k", "--accum", metavar="N", dest="accum", type=natural, help="enable the gradient accumulation and specify its partial batch size")
     group.add_argument("-g", "--group", metavar="N", dest="group", type=uint, default=0, help="group size of the minibatch standard deviation (set to 0 to use entire batch)")

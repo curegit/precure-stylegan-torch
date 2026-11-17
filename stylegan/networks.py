@@ -5,6 +5,7 @@ from torch import nn
 from torch.nn import functional as F
 from stylegan.layers.basic import GaussianDistribution, LeakyRelu, EqualizedLinear
 from stylegan.layers.generator import InitialSkipArchitecture, SkipArchitecture
+from stylegan.layers.discriminator import FromRGB, ResidualBlock, OutputBlock
 from utilities.math import lerp
 from utilities.stdio import eprint
 
@@ -195,3 +196,70 @@ class Generator(nn.Module):
         generator = Generator(**checkpoint["params"])
         generator.load_state_dict(checkpoint["state_dict"])
         return generator.to(device).eval()
+
+
+class Discriminator(nn.Module):
+
+    def __init__(self, levels=7, first_channels=16, last_channels=512, categories=1, depth=8, group_size=None):
+        super().__init__()
+        in_channels = [first_channels] * (levels - 1)
+        out_channels = [last_channels] * (levels - 1)
+        for i in range(1, levels - 1):
+            channels = min(first_channels * 2**i, last_channels)
+            in_channels[i] = channels
+            out_channels[i - 1] = channels
+        self.main = nn.Sequential(
+            FromRGB(first_channels),
+            *[ResidualBlock(i, o) for i, o in zip(in_channels, out_channels)],
+            OutputBlock(last_channels, categories > 1, group_size),
+        )
+        if categories > 1:
+            self.embedder = EqualizedLinear(categories, last_channels, gain=1)
+            self.mapper = nn.Sequential(*[nn.Sequential(EqualizedLinear(last_channels, last_channels), LeakyRelu()) for _ in range(depth)])
+
+    def forward(self, x, c=None):
+        if c is not None:
+            embedded = self.embedder(c)
+            normalized = embedded / torch.sqrt(torch.mean(embedded**2, dim=1, keepdim=True) + 1e-08)
+            c1 = self.mapper(normalized)
+        h = self.main(x)
+        batch, channels = h.shape
+        return h.reshape(batch) if c is None else torch.sum(h * c1, dim=1) / root(channels)
+
+    def freeze(self, levels=[]):
+        for i, b in self.blocks:
+            if i in levels:
+                if isinstance(b, FromRGB):
+                    b.requires_grad_(False)
+                elif isinstance(b, ResidualBlock):
+                    b.requires_grad_(False)
+                elif isinstance(b, OutputBlock):
+                    b.conv1.requires_grad_(False)
+                    b.conv2.requires_grad_(False)
+
+    def transfer(self, source, levels=[]):
+        for (i, dest), (j, src) in zip(self.blocks, source.blocks):
+            if i in levels:
+                if isinstance(dest, FromRGB):
+                    if not isinstance(src, FromRGB):
+                        eprint("Network architecture doesn't match!")
+                        raise RuntimeError("Model error")
+                    dest.load_state_dict(src.state_dict())
+                elif isinstance(dest, ResidualBlock):
+                    if not isinstance(src, ResidualBlock):
+                        eprint("Network architecture doesn't match!")
+                        raise RuntimeError("Model error")
+                    dest.load_state_dict(src.state_dict())
+                elif isinstance(dest, OutputBlock):
+                    if not isinstance(src, OutputBlock):
+                        eprint("Network architecture doesn't match!")
+                        raise RuntimeError("Model error")
+                    dest.conv1.load_state_dict(src.conv1.state_dict())
+                    dest.conv2.load_state_dict(src.conv2.state_dict())
+                else:
+                    raise RuntimeError()
+
+    @property
+    def blocks(self):
+        for i, s in enumerate(self.main):
+            yield i, s

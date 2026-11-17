@@ -2,7 +2,7 @@ from math import log
 from numpy import ones, sqrt, where, float32
 from numpy.fft import fftfreq
 from numpy.random import uniform, lognormal
-from chainer.functions import fft, ifft
+import torch
 from stylegan.manipulations.base import Manipulation
 
 
@@ -17,7 +17,7 @@ class Filtering(Manipulation):
         self.band3_probability = 1.0
         self.band4_probability = 1.0
 
-    def __call__(self, x, p):
+    def forward(self, x, p):
         p *= self.probability_multiplier
         if p <= 0:
             return x
@@ -62,14 +62,6 @@ class Filtering(Manipulation):
             ah *= where(bh, oh * a, oh) / ((10 + 1 + 1 + a) / 13)
         aw[:, 0] = 1.0
         ah[:, 0] = 1.0
-        sw = x.xp.asarray(aw).reshape(batch, 1, 1, width)
-        sh = x.xp.asarray(ah).reshape(batch, 1, 1, height)
-        zeros = x.xp.zeros((batch, channels, height, width), dtype=x.xp.float32)
-        r1, i1 = fft((x, zeros))
-        r2, i2 = r1 * sw, i1 * sw
-        r3, i3 = r2.transpose(0, 1, 3, 2), i2.transpose(0, 1, 3, 2)
-        r4, i4 = fft((r3, i3))
-        r5, i5 = r4 * sh, i4 * sh
-        r6, i6 = ifft((r5, i5))
-        r7, i7 = r6.transpose(0, 1, 3, 2), i6.transpose(0, 1, 3, 2)
-        return ifft((r7, i7))[0]
+        sw = torch.as_tensor(aw, device=x.device, dtype=x.dtype).reshape(batch, 1, 1, width)
+        sh = torch.as_tensor(ah, device=x.device, dtype=x.dtype).reshape(batch, 1, height, 1)
+        return torch.fft.ifft2(torch.fft.fft2(x) * sw * sh).real

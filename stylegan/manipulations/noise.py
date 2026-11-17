@@ -1,5 +1,4 @@
-from chainer import Variable
-from chainer.functions import gaussian, broadcast_to, where
+import torch
 from stylegan.manipulations.base import Manipulation
 
 
@@ -10,16 +9,13 @@ class AdditiveNoise(Manipulation):
         self.sd = sd
         self.probability_multiplier = probability_multiplier
 
-    def __call__(self, x, p):
+    def forward(self, x, p):
         p *= self.probability_multiplier
         if p <= 0:
             return x
         batch = x.shape[0]
-        normal = self.xp.random.normal(scale=self.sd, size=batch).astype(self.xp.float32)
-        half_normal = self.xp.absolute(normal)
-        mean = Variable(self.xp.zeros(shape=x.shape, dtype=self.xp.float32))
-        ln_var = broadcast_to(Variable(self.xp.log(half_normal**2)).reshape(batch, 1, 1, 1), x.shape)
-        noise_added = x + gaussian(mean, ln_var)
+        half_normal = torch.randn((batch, 1, 1, 1), device=x.device, dtype=x.dtype).abs() * self.sd
+        noise_added = x + torch.randn_like(x) * half_normal
         return self.random_where(p, noise_added, x)
 
 
@@ -32,21 +28,19 @@ class Cutout(Manipulation):
         self.fill = fill
         self.probability_multiplier = probability_multiplier
 
-    def __call__(self, x, p):
+    def forward(self, x, p):
         p *= self.probability_multiplier
         if p <= 0:
             return x
         batch, _, height, width = x.shape
-        horizontal_center = self.xp.random.uniform(size=(batch, 1)) * width
-        vertical_center = self.xp.random.uniform(size=(batch, 1)) * height
+        horizontal_center = torch.rand((batch, 1), device=x.device) * width
+        vertical_center = torch.rand((batch, 1), device=x.device) * height
         w2, h2 = self.width * width / 2, self.height * height / 2
         left, right = horizontal_center - w2, horizontal_center + w2
         top, bottom = vertical_center - h2, vertical_center + h2
-        horizontal_indices = self.xp.tile(self.xp.arange(0.5, width), (batch, 1))
-        vertical_indices = self.xp.tile(self.xp.arange(0.5, height), (batch, 1))
+        horizontal_indices = torch.arange(0.5, width, device=x.device)
+        vertical_indices = torch.arange(0.5, height, device=x.device)
         w = ((left <= horizontal_indices) & (horizontal_indices < right)).reshape(batch, 1, 1, width)
         h = ((top <= vertical_indices) & (vertical_indices < bottom)).reshape(batch, 1, height, 1)
-        cut = Variable(self.xp.tile(w & h, (1, 3, 1, 1)))
-        hole = Variable(self.xp.full(x.shape, self.fill, dtype=self.xp.float32))
-        cutout = where(cut, hole, x)
+        cutout = torch.where(w & h, self.fill, x)
         return self.random_where(p, cutout, x)

@@ -217,10 +217,16 @@ To animate between two saved styles with fixed noise and additional GIF output:
 python3 animate.py models/ffhq.pt -n 0 -P faces/1-style.npy -A faces/2-style.npy -I 15 --fixed 0 -L -R -G -o style-animation
 ```
 
-### `train.py` Training (not yet ported)
+### `train.py`
 
 Use this script to train your own models.
 Use the `-h` option for more details.
+
+Install the training dependencies (including Matplotlib for training curves):
+
+```sh
+python3 -m pip install -r requirements-training.txt
+```
 
 Basically, you need to specify the directories for your dataset, the network architecture parameters, and the training duration.
 Image data should be in RGB or Gray formats with 8-bit depth, and in powers of two square images.
@@ -239,11 +245,14 @@ To resume training from a snapshot:
 
 ```sh
 # Run another 50 epochs on GPU
-python3 train.py -e 50 -s training-result/snapshot.hdf5 -o training-result-resumed -b 32 -g 4 -k 8 --ada CAT_IMAGE_DIR DOG_IMAGE_DIR WILD_ANIMAL_IMAGE_DIR -l cat dog wild -v GPU
+python3 train.py -e 50 -s training-result/snapshot.pt -o training-result-resumed -b 32 -g 4 -k 8 --ada CAT_IMAGE_DIR DOG_IMAGE_DIR WILD_ANIMAL_IMAGE_DIR -l cat dog wild -v GPU
 ```
 
-While network architecture is restored from the snapshot, other hyperparameters are not, so you must pass them again.
-Also, you should specify the additional training length, not the total duration, because elapsed training duration will not be serialized.
+Snapshots restore network weights, Adam states (including learning rates and betas), EMA, iteration, path length/ADA statistics, data ordering and random states.
+Pass the same dataset directories in the same order and keep the batch size unchanged.
+Other training settings (regularization, accumulation/group sizes, ADA, freezing and reporting) must be passed again.
+Specify the additional training length with `-e`, not the total duration.
+Intermediate generators and training snapshots are saved as `.pt` files in `checkpoints/`.
 
 Training curves at the beginning of the training typically look like this:
 

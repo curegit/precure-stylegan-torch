@@ -1,7 +1,7 @@
 from math import sqrt, log, sin, cos, pi
 from numpy import array, eye, outer, stack, float32
 from numpy.random import uniform, normal, lognormal
-from chainer.functions import concat
+import torch
 from stylegan.manipulations.base import Manipulation
 
 identity = eye(4, dtype=float32)
@@ -38,7 +38,7 @@ class ColorAffineTransformation(Manipulation):
         self.saturation = saturation * log(2)
         self.probability_multiplier = probability_multiplier
 
-    def __call__(self, x, p=1.0):
+    def forward(self, x, p=1.0):
         p *= self.probability_multiplier
         if p <= 0:
             return x
@@ -69,9 +69,9 @@ class ColorAffineTransformation(Manipulation):
         inverse_centering = translation(0.5, 0.5, 0.5)
         affine = inverse_centering @ affine
         affine = affine[:, 0:3].reshape(batch, 1, 3, 4)
-        affine = self.xp.asarray(affine)
-        ones = self.xp.ones((batch, height * width, 1, 1), dtype=self.xp.float32)
-        h1 = x.transpose(0, 2, 3, 1).reshape(batch, height * width, channels, 1)
-        h2 = concat((h1, ones), axis=2)
+        affine = torch.as_tensor(affine, device=x.device, dtype=x.dtype)
+        ones = torch.ones((batch, height * width, 1, 1), device=x.device, dtype=x.dtype)
+        h1 = x.permute(0, 2, 3, 1).reshape(batch, height * width, channels, 1)
+        h2 = torch.cat((h1, ones), dim=2)
         h3 = (affine @ h2).reshape(batch, height, width, channels)
-        return h3.transpose(0, 3, 1, 2)
+        return h3.permute(0, 3, 1, 2)
