@@ -163,32 +163,34 @@ Run the Generator, conversion, and CLI tests with `python3 -m pytest tests` (pyt
 ### `combine.py`
 
 This script performs linear combination on style vectors from style files, creating a new style file and image.
+It accepts PyTorch `.pt` checkpoints and existing `.npy` style vectors, including those exported by the original Chainer implementation. Each vector must have the model's style dimension. The result is saved as `new-style.npy`; use `-n 0` to save only the style vector.
 Use the `-h` option for more details.
 
 Example 1: To average two cats:
 
 ```sh
 python3 generate.py models/afhq.pt -n 2 -l cat -t 0.8 -o cats
-python3 combine.py models/afhq.hdf5 -n 1 cats/1-style.npy cats/2-style.npy -c 0.5 0.5 -o new-cat
+python3 combine.py models/afhq.pt -n 1 cats/1-style.npy cats/2-style.npy -c 0.5 0.5 -o new-cat
 ```
 
 Example 2: To generate 3 human face images and add the style vector difference from image 2 to image 3 to image 1:
 
 ```sh
 python3 generate.py models/ffhq.pt -n 3 -t 0.8 -o faces
-python3 combine.py models/ffhq.hdf5 -n 1 faces/1-style.npy faces/2-style.npy faces/3-style.npy -c 1 -1 1 -o new-face
+python3 combine.py models/ffhq.pt -n 1 faces/1-style.npy faces/2-style.npy faces/3-style.npy -c 1 -1 1 -o new-face
 ```
 
 ### `mix.py`
 
 This script mixes styles from style files and creates style-mixed images.
+It accepts PyTorch `.pt` checkpoints and existing `.npy` style vectors, including those exported by the original Chainer implementation. `...` repeats the preceding style (or the first supplied style for leading placeholders); omitted trailing levels repeat the last style. `--lerp` interpolates between supplied styles instead, and `--justify` distributes the supplied arguments across the model's levels. The public `justify` and `slide_ellipsis` helpers retain their existing signatures and behavior.
 Use the `-h` option for additional details.
 
 For instance, to generate 2 anime face images and mix them, use:
 
 ```sh
 python3 generate.py models/anime.pt -n 2 -o anime
-python3 mix.py models/anime.hdf5 -n 1 anime/1-style.npy ... ... anime/2-style.npy -o anime-mix
+python3 mix.py models/anime.pt -n 1 anime/1-style.npy ... ... anime/2-style.npy -o anime-mix
 ```
 
 ### `animate.py`

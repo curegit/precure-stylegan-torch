@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 
+import torch
 from sys import exit
-from chainer.functions import stack
 from stylegan.networks import Generator
 from interface.args import CustomArgumentParser
 from interface.argtypes import uint
@@ -12,7 +12,6 @@ from utilities.image import save_image
 from utilities.stdio import eprint
 from utilities.filesys import mkdirs, open_filepath_write
 from utilities.numpy import load
-from utilities.chainer import to_variable, config_valid
 
 
 def justify(xs, length, align_end=False, fill=...):
@@ -68,17 +67,20 @@ def lerp_ellipsis(xs):
     return ys
 
 
+@torch.inference_mode()
 def main(args):
-    config_valid()
     print("Loading a model...")
-    generator = Generator.load(args.generator)
-    generator.to_device(args.device)
+    generator = Generator.load(args.generator, device=args.device)
     ws = []
     for s in args.style:
         if s == "...":
             ws.append(...)
         else:
-            ws.append(to_variable(load(s), device=args.device))
+            style = load(s)
+            if style.shape != (generator.size,):
+                eprint(f"Invalid style vector: {s}; expected shape {(generator.size,)}, got {style.shape}")
+                raise RuntimeError("Input error")
+            ws.append(torch.as_tensor(style, device=args.device, dtype=next(generator.parameters()).dtype))
     if all(w is ... for w in ws):
         eprint("You must supply at least one style file!")
         raise RuntimeError("Input error")
@@ -106,12 +108,11 @@ def main(args):
     mkdirs(args.dest)
     with chainer_like_tqdm(desc="generation", total=args.number) as bar:
         for i, n in range_batch(args.number, args.batch):
-            y = generator.synthesizer([stack([w] * n) for w in ws], noise=args.noisy, fixed=args.fixed)
-            y.to_cpu()
+            y = generator.synthesizer([w.unsqueeze(0).expand(n, -1) for w in ws], noise=args.noisy, fixed=args.fixed).cpu().numpy()
             for j in range(n):
                 filename = f"{i + j + 1}"
                 with open_filepath_write(args.dest, filename, "png", args.force) as fp:
-                    save_image(y.array[j], fp)
+                    save_image(y[j], fp)
                 bar.update()
 
 

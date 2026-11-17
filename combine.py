@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 
+import torch
 from sys import exit
 from numpy import array
-from chainer.functions import stack
 from stylegan.networks import Generator
 from interface.args import CustomArgumentParser
 from interface.argtypes import uint, real
@@ -12,27 +12,33 @@ from utilities.image import save_image
 from utilities.stdio import eprint
 from utilities.filesys import mkdirs, open_filepath_write
 from utilities.numpy import load, save
-from utilities.chainer import to_variable, config_valid
 
 
+@torch.inference_mode()
 def main(args):
-    config_valid()
     print("Loading a model...")
-    generator = Generator.load(args.generator)
-    generator.to_device(args.device)
-    ws = array([load(s) for s in args.style])
+    generator = Generator.load(args.generator, device=args.device)
+    ws = []
+    for filepath in args.style:
+        style = load(filepath)
+        if style.shape != (generator.size,):
+            eprint(f"Invalid style vector: {filepath}; expected shape {(generator.size,)}, got {style.shape}")
+            raise RuntimeError("Input error")
+        ws.append(style)
+    ws = array(ws)
     w = sum(w * k for w, k in zip(ws, args.coefs))
     mkdirs(args.dest)
     with open_filepath_write(args.dest, "new-style", "npy", args.force) as fp:
         save(fp, w)
+    w = torch.as_tensor(w, device=args.device, dtype=next(generator.parameters()).dtype)
     with chainer_like_tqdm(desc="generation", total=args.number) as bar:
         for i, n in range_batch(args.number, args.batch):
-            y = generator.synthesizer([stack([to_variable(w, device=args.device)] * n)] * generator.levels, noise=args.noisy, fixed=args.fixed)
-            y.to_cpu()
+            batch_w = w.unsqueeze(0).expand(n, -1)
+            y = generator.synthesizer([batch_w] * generator.levels, noise=args.noisy, fixed=args.fixed).cpu().numpy()
             for j in range(n):
                 filename = f"{i + j + 1}"
                 with open_filepath_write(args.dest, filename, "png", args.force) as fp:
-                    save_image(y.array[j], fp)
+                    save_image(y[j], fp)
                 bar.update()
 
 
