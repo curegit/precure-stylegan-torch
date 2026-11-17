@@ -2,7 +2,7 @@
 
 StyleGAN 2.0 implementation with Adaptive Discriminator Augmentation
 
-This project was ported from [Chainer implementation](https://github.com/curegit/precure-stylegan-ada) to continue with further maintenance.
+This project is a PyTorch port of the [original Chainer implementation](https://github.com/curegit/precure-stylegan-ada) for continued maintenance.
 
 ## Abstract
 
@@ -22,58 +22,50 @@ We also trained the models on other common datasets, demonstrating the stability
 - NumPy >= 1.17
 - tqdm
 
-Use `requirements.txt` to install minimal dependencies for inferencing.
+Install the inference dependencies with:
 
 ```sh
-pip3 install -r requirements.txt
+python3 -m pip install -r requirements.txt
 ```
 
-### For training
+Inference runs on CPU by default.
+Use `-v cuda` for an available CUDA device or `-v mps` for an available MPS device, with a matching PyTorch build.
+Model inspection with `show.py` always runs on CPU.
 
-- Chainer >= 7.2 (training has not yet been ported to PyTorch)
-- h5py
-- CuPy (with CUDA & cuDNN)
-- Matplotlib
+Check the available backends and PyTorch environment with:
 
-You should need GPU support to train your own models.
-Note that our implementation does not support distributed training across multiple GPUs.
+```sh
+python3 tools/inspect_env.py
+```
 
-Matplotlib is required to draw learning curves.
+h5py is an optional dependency needed only when converting legacy HDF5 (Chainer checkpoint) models.
 
 ## Model Zoo
 
-We provide these pre-trained generators on common datasets in the `models` folder.
+Ready-to-use PyTorch generators are provided in `models/`:
 
-- Flickr-Faces-HQ
-- Animal Faces-HQ (conditional)
-- Anime Faces
-- MNIST (conditional)
-- Kuzushiji-49 (conditional)
+| Dataset | Checkpoint | Conditioning |
+| --- | --- | --- |
+| Flickr-Faces-HQ | `models/ffhq.pt` | Unconditional |
+| Animal Faces-HQ | `models/afhq.pt` | Conditional |
+| Anime Faces | `models/anime.pt` | Unconditional |
+| MNIST | `models/mnist.pt` | Conditional |
+| Kuzushiji-49 | `models/k49.pt` | Conditional |
 
-Convert a generator to `.pt` and run it like this. h5py is needed only for conversion, and Chainer is not required:
-
-```sh
-python3 -m pip install -r tools/requirements-convert.txt
-python3 tools/convert_hdf5.py models/afhq.hdf5 -o models/afhq.pt
-python3 generate.py models/afhq.pt -o output
-```
-
-For MNIST, convert the bundled model and generate images of the digit 7:
+For example, inspect the MNIST model and generate images of the digit 7:
 
 ```sh
-python3 tools/convert_hdf5.py models/mnist.hdf5 -o models/mnist.pt
-python3 generate.py models/mnist.pt -n 10 -l seven --fixed 0 -o output-mnist
+python3 show.py models/mnist.pt
+python3 generate.py models/mnist.pt -n 10 -l seven -o output-mnist
 ```
-
-The converter preserves architecture, labels, and learned tensors, and rejects missing, extra, or incompatible weights. By default it writes next to the input with a `.pt` extension; use `-o` to choose a path and `--force` to replace an existing output. It accepts standalone Generator files, not training snapshots.
-
-If a model with Mapper depth greater than 2 was converted using the earlier converter, regenerate its `.pt` file with `--force`. The earlier version assumed ascending Mapper weight names, but legacy Chainer Sequential stores the later dense layers in reverse order. FFHQ conversion is now checked against independent Chainer reference outputs.
 
 ## Results
 
-We use ψ = 1.0 (no truncation applied) to evaluate for each Fréchet Inception Distance (FID).
+Note that scores and example images below come from the original Chainer implementation.
+These have not been re-evaluated for this PyTorch port.
 
-All the examples below are uncurated, and all truncations are applied with the `-C` option (shrinking to each class).
+We use ψ = 1.0 (no truncation applied) to evaluate for each Fréchet Inception Distance (FID).
+The result grids below are uncurated, and truncation was applied with the `-C` option (shrinking to each class).
 
 ### Cure Beauty v1 (ψ = 0.8, FID = 21.98, ADA enabled, batch = 16, R1 = 100)
 
@@ -147,7 +139,9 @@ python3 show.py models/mnist.pt
 
 ### `generate.py`
 
-This script generates images utilizing a trained model.
+This script generates images using a trained `.pt` model.
+It saves each image together with its latent vector (`N-latent.npy`) and style vector (`N-style.npy`).
+Use `show.py` to inspect the available class labels.
 Use the `-h` option for more details.
 
 For example, to generate 100 dog images in the `output` folder using the AFHQ model, type:
@@ -158,12 +152,19 @@ python3 generate.py models/afhq.pt -n 100 -l dog -o output
 
 `Generator.save(path)` writes a PyTorch checkpoint containing `format_version`, `params` (architecture and labels), and `state_dict` (learned tensors). `Generator.load(path, device="cpu")` reconstructs the model for inference without Chainer or h5py. Latent and style vectors continue to use `.npy` files.
 
-Run the Generator, conversion, and CLI tests with `python3 -m pytest tests` (pytest is a development dependency). Conversion tests require h5py and use the bundled MNIST model.
+`--fixed 0` fixes the per-layer injected noise.
+It does not seed the randomly sampled latent vectors, so separate runs can still generate different images.
+
+Latent and style vectors exported by the original Chainer implementation can be used with the corresponding converted Generator.
+Use vectors from the same Generator checkpoint; matching vector dimensions alone do not make different models' style spaces compatible.
 
 ### `combine.py`
 
-This script performs linear combination on style vectors from style files, creating a new style file and image.
-It accepts PyTorch `.pt` checkpoints and existing `.npy` style vectors, including those exported by the original Chainer implementation. Each vector must have the model's style dimension. The result is saved as `new-style.npy`; use `-n 0` to save only the style vector.
+This script performs linear combination on style vectors from style files, creating a new style file and images.
+Omitting `--coefs` averages the input styles.
+It accepts PyTorch `.pt` checkpoints and existing `.npy` style vectors, including those exported by the original Chainer implementation.
+Each vector must have the model's style dimension.
+The result is saved as `new-style.npy`; use `-n 0` to save only the style vector.
 Use the `-h` option for more details.
 
 Example 1: To average two cats:
@@ -183,7 +184,9 @@ python3 combine.py models/ffhq.pt -n 1 faces/1-style.npy faces/2-style.npy faces
 ### `mix.py`
 
 This script mixes styles from style files and creates style-mixed images.
-It accepts PyTorch `.pt` checkpoints and existing `.npy` style vectors, including those exported by the original Chainer implementation. `...` repeats the preceding style (or the first supplied style for leading placeholders); omitted trailing levels repeat the last style. `--lerp` interpolates between supplied styles instead, and `--justify` distributes the supplied arguments across the model's levels. The public `justify` and `slide_ellipsis` helpers retain their existing signatures and behavior.
+It accepts PyTorch `.pt` checkpoints and existing `.npy` style vectors, including those exported by the original Chainer implementation.
+`...` repeats the preceding style (or the first supplied style for leading placeholders); omitted trailing levels repeat the last style.
+`--lerp` interpolates between supplied styles instead, and `--justify` distributes the supplied arguments across the model's levels.
 Use the `-h` option for additional details.
 
 For instance, to generate 2 anime face images and mix them, use:
@@ -196,7 +199,10 @@ python3 mix.py models/anime.pt -n 1 anime/1-style.npy ... ... anime/2-style.npy 
 ### `animate.py`
 
 This script makes an animation of the analogy using a trained generator.
-It accepts PyTorch `.pt` checkpoints and writes an animated PNG (`analogy.png`), with optional GIF (`--gif`) and WebP (`--webp`) output. Use `--prepend` and `--append` with existing `.npy` style vectors, including Chainer exports, and `-n 0` to animate only those styles. `--loop` interpolates back to the first style, while `--repeat` sets the output animation's repeat flag. `--frames` also saves individual frame images.
+It accepts PyTorch `.pt` checkpoints and writes an animated PNG (`analogy.png`), with optional GIF (`--gif`) and WebP (`--webp`) output.
+Use `--prepend` and `--append` with existing `.npy` style vectors, including Chainer exports, and `-n 0` to animate only those styles.
+`--loop` interpolates back to the first style, while `--repeat` sets the output animation's repeat flag.
+`--frames` also saves individual frame images.
 Use the `-h` option for more details.
 
 For example, to create an animation that interpolates 10 face samples using the FFHQ model, use:
@@ -211,7 +217,7 @@ To animate between two saved styles with fixed noise and additional GIF output:
 python3 animate.py models/ffhq.pt -n 0 -P faces/1-style.npy -A faces/2-style.npy -I 15 --fixed 0 -L -R -G -o style-animation
 ```
 
-### `train.py`
+### `train.py` Training (not yet ported)
 
 Use this script to train your own models.
 Use the `-h` option for more details.
@@ -251,10 +257,20 @@ Here are some examples of Cure Twinkle transferred from Cure Beauty v2, which wa
 
 ![Cure Twinkle (Transferred)](examples/transfer.png)
 
-### Small Tools
+## Legacy HDF5 Models
 
-- `tools/check_env.py` reports the PyTorch environment, including Python, OS, CUDA, cuDNN, GPU, and installed package versions.
-- `tools/tile.py` creates an N by M tiled image matrix.
+The original Chainer Generator files are retained in `models/legacy/`.
+To convert one, install the conversion dependencies and choose an output path:
+
+```sh
+python3 -m pip install -r tools/requirements-convert.txt
+python3 tools/convert_hdf5.py models/legacy/mnist.hdf5 -o converted/mnist.pt
+python3 show.py converted/mnist.pt
+```
+
+The converter requires h5py, but does not import Chainer.
+It preserves architecture, labels, and learned tensors, and rejects missing, extra, or incompatible weights.
+Only standalone Generator files are supported; training snapshots cannot be converted or resumed with the inference tools.
 
 ## See Also
 
