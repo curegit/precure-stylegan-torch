@@ -4,7 +4,8 @@ from sys import exit, argv
 from os.path import basename, realpath
 from chainer.iterators import SerialIterator
 from stylegan.dataset import ImageDataset, MulticategoryImageDataset
-from stylegan.networks import Generator, Discriminator
+from stylegan.networks import Generator
+from stylegan.layers.discriminator import Discriminator
 from stylegan.training import AdamSet, CustomUpdater, CustomTrainer
 from stylegan.augmentation import AugmentationPipeline
 from interface.args import dump_json, CustomArgumentParser

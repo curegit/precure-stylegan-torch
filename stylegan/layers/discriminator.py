@@ -1,8 +1,9 @@
 from math import sqrt as root
 from numpy import array, sinc, float32
-from chainer import Chain
-from chainer.functions import sqrt, mean, average_pooling_2d, convolution_2d, concat, broadcast_to, pad
+from chainer import Chain, Sequential
+from chainer.functions import sqrt, sum, mean, average_pooling_2d, convolution_2d, concat, broadcast_to, pad
 from stylegan.layers.basic import LeakyRelu, EqualizedLinear, EqualizedConvolution2D
+from utilities.stdio import eprint
 
 
 class Downsampler:
@@ -103,3 +104,71 @@ class OutputBlock(Chain):
         yield self.conv1.in_channels
         yield self.conv1.out_channels
         yield self.conv2.out_channels
+
+
+class Discriminator(Chain):
+
+    def __init__(self, levels=7, first_channels=16, last_channels=512, categories=1, depth=8, group_size=None):
+        super().__init__()
+        in_channels = [first_channels] * (levels - 1)
+        out_channels = [last_channels] * (levels - 1)
+        for i in range(1, levels - 1):
+            channels = min(first_channels * 2**i, last_channels)
+            in_channels[i] = channels
+            out_channels[i - 1] = channels
+        with self.init_scope():
+            self.main = Sequential(
+                FromRGB(first_channels),
+                *[ResidualBlock(i, o) for i, o in zip(in_channels, out_channels)],
+                OutputBlock(last_channels, categories > 1, group_size),
+            )
+            if categories > 1:
+                self.embedder = EqualizedLinear(categories, last_channels, gain=1)
+                self.mapper = Sequential(EqualizedLinear(last_channels, last_channels), LeakyRelu()).repeat(depth)
+
+    def __call__(self, x, c=None):
+        if c is not None:
+            embedded = self.embedder(c)
+            normalized = embedded / sqrt(mean(embedded**2, axis=1, keepdims=True) + 1e-08)
+            c1 = self.mapper(normalized)
+        h = self.main(x)
+        batch, channels = h.shape
+        return h.reshape(batch) if c is None else sum(h * c1, axis=1) / root(channels)
+
+    def freeze(self, levels=[]):
+        for i, b in self.blocks:
+            if i in levels:
+                if isinstance(b, FromRGB):
+                    b.disable_update()
+                elif isinstance(b, ResidualBlock):
+                    b.disable_update()
+                elif isinstance(b, OutputBlock):
+                    b.conv1.disable_update()
+                    b.conv2.disable_update()
+
+    def transfer(self, source, levels=[]):
+        for (i, dest), (j, src) in zip(self.blocks, source.blocks):
+            if i in levels:
+                if isinstance(dest, FromRGB):
+                    if not isinstance(src, FromRGB):
+                        eprint("Network architecture doesn't match!")
+                        raise RuntimeError("Model error")
+                    dest.copyparams(src)
+                elif isinstance(dest, ResidualBlock):
+                    if not isinstance(src, ResidualBlock):
+                        eprint("Network architecture doesn't match!")
+                        raise RuntimeError("Model error")
+                    dest.copyparams(src)
+                elif isinstance(dest, OutputBlock):
+                    if not isinstance(src, OutputBlock):
+                        eprint("Network architecture doesn't match!")
+                        raise RuntimeError("Model error")
+                    dest.conv1.copyparams(src.conv1)
+                    dest.conv2.copyparams(src.conv2)
+                else:
+                    raise RuntimeError()
+
+    @property
+    def blocks(self):
+        for i, s in enumerate(self.main):
+            yield i, s

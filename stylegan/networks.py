@@ -1,34 +1,31 @@
 from math import sqrt as root
 from random import randint
-from h5py import File as HDF5File
-from chainer import Variable, Chain, ChainList, Sequential
-from chainer.functions import sqrt, sum, mean, concat, stack
-from chainer.serializers import HDF5Serializer, HDF5Deserializer
+import torch
+from torch import nn
+from torch.nn import functional as F
 from stylegan.layers.basic import GaussianDistribution, LeakyRelu, EqualizedLinear
 from stylegan.layers.generator import InitialSkipArchitecture, SkipArchitecture
-from stylegan.layers.discriminator import FromRGB, ResidualBlock, OutputBlock
 from utilities.math import lerp
 from utilities.stdio import eprint
 
 
-class Mapper(Chain):
+class Mapper(nn.Module):
 
     def __init__(self, size, depth, conditional=False):
         super().__init__()
-        with self.init_scope():
-            self.mlp = Sequential(
-                EqualizedLinear(size * 2 if conditional else size, size),
-                LeakyRelu(),
-                *[l for b in [[EqualizedLinear(size, size), LeakyRelu()] for _ in range(depth - 1)] for l in b],
-            )
+        self.mlp = nn.Sequential(
+            EqualizedLinear(size * 2 if conditional else size, size),
+            LeakyRelu(),
+            *[l for b in [[EqualizedLinear(size, size), LeakyRelu()] for _ in range(depth - 1)] for l in b],
+        )
 
-    def __call__(self, z, c=None):
-        h1 = z / sqrt(mean(z**2, axis=1, keepdims=True) + 1e-08)
-        h2 = h1 if c is None else concat((h1, c / sqrt(mean(c**2, axis=1, keepdims=True) + 1e-08)), axis=1)
+    def forward(self, z, c=None):
+        h1 = z / torch.sqrt(torch.mean(z**2, dim=1, keepdim=True) + 1e-08)
+        h2 = h1 if c is None else torch.cat((h1, c / torch.sqrt(torch.mean(c**2, dim=1, keepdim=True) + 1e-08)), dim=1)
         return self.mlp(h2)
 
 
-class Synthesizer(Chain):
+class Synthesizer(nn.Module):
 
     def __init__(self, size, levels, first_channels, last_channels):
         super().__init__()
@@ -38,11 +35,10 @@ class Synthesizer(Chain):
             channels = min(first_channels, last_channels * 2**i)
             in_channels[-i] = channels
             out_channels[-i - 1] = channels
-        with self.init_scope():
-            self.init = InitialSkipArchitecture(size, in_channels[0], out_channels[0], level=1)
-            self.skips = ChainList(*[SkipArchitecture(size, i, o, level=l) for l, (i, o) in enumerate(zip(in_channels[1:], out_channels[1:]), 2)])
+        self.init = InitialSkipArchitecture(size, in_channels[0], out_channels[0], level=1)
+        self.skips = nn.ModuleList([SkipArchitecture(size, i, o, level=l) for l, (i, o) in enumerate(zip(in_channels[1:], out_channels[1:]), 2)])
 
-    def __call__(self, ws, noise=1.0, fixed=None):
+    def forward(self, ws, noise=1.0, fixed=None):
         h, rgb = self.init(ws[0], noise=noise, fixed=fixed)
         for s, w in zip(self.skips, ws[1:]):
             h, rgb = s(h, rgb, w, noise=noise, fixed=fixed)
@@ -55,7 +51,7 @@ class Synthesizer(Chain):
             yield i, s
 
 
-class Generator(Chain):
+class Generator(nn.Module):
 
     def __init__(self, size=512, depth=8, levels=7, first_channels=512, last_channels=64, categories=1, labels=None):
         super().__init__()
@@ -69,14 +65,13 @@ class Generator(Chain):
         self.labels = [f"cat{i}" for i in range(categories)]
         if labels is not None:
             self.embed_labels(labels)
-        with self.init_scope():
-            self.sampler = GaussianDistribution(self)
-            self.mapper = Mapper(size, depth, categories > 1)
-            self.synthesizer = Synthesizer(size, levels, first_channels, last_channels)
-            if categories > 1:
-                self.embedder = EqualizedLinear(categories, size, gain=1)
+        self.sampler = GaussianDistribution(self)
+        self.mapper = Mapper(size, depth, categories > 1)
+        self.synthesizer = Synthesizer(size, levels, first_channels, last_channels)
+        if categories > 1:
+            self.embedder = EqualizedLinear(categories, size, gain=1)
 
-    def __call__(self, z, c=None, random_mix=None, psi=1.0, mean_w=None, categories=None, noise=1.0, fixed=None):
+    def forward(self, z, c=None, random_mix=None, psi=1.0, mean_w=None, categories=None, noise=1.0, fixed=None):
         z, *zs = z if isinstance(z, tuple) or isinstance(z, list) else [z]
         if self.conditional and c is None:
             _, c = self.generate_conditions(len(z), categories)
@@ -99,11 +94,13 @@ class Generator(Chain):
         return self.sampler(batch, self.size) * sd + (0.0 if center is None else center)
 
     def generate_conditions(self, batch, categories=None):
+        parameter = next(self.parameters())
         if categories is None:
-            ind = self.xp.random.randint(low=0, high=self.categories, size=batch)
+            ind = torch.randint(self.categories, (batch,), device=parameter.device)
         else:
-            ind = self.xp.array(categories)[self.xp.random.randint(low=0, high=len(categories), size=batch)]
-        return [int(i) for i in ind], Variable(self.xp.eye(self.categories, dtype=self.xp.float32)[ind])
+            choices = torch.as_tensor(categories, device=parameter.device, dtype=torch.long)
+            ind = choices[torch.randint(len(choices), (batch,), device=parameter.device)]
+        return ind.tolist(), F.one_hot(ind, num_classes=self.categories).to(dtype=parameter.dtype)
 
     def generate_masks(self, batch):
         return self.sampler(batch, 3, self.height, self.width) / root(self.height * self.width)
@@ -117,10 +114,10 @@ class Generator(Chain):
 
     def calculate_mean_w(self, n=50000, categories=None):
         c = self.embedder(self.generate_conditions(n, categories)[1]) if self.conditional else None
-        return mean(self.mapper(self.generate_latents(n), c), axis=0)
+        return torch.mean(self.mapper(self.generate_latents(n), c), dim=0)
 
     def calculate_mean_ws_by_category(self, n=50000):
-        return stack([self.calculate_mean_w(n=n, categories=[i]) for i in range(self.categories)])
+        return torch.stack([self.calculate_mean_w(n=n, categories=[i]) for i in range(self.categories)])
 
     @property
     def width(self):
@@ -150,12 +147,12 @@ class Generator(Chain):
         for i, b in self.synthesizer.blocks:
             if i in levels:
                 if isinstance(b, InitialSkipArchitecture):
-                    b.wmconv.disable_update()
-                    b.torgb.disable_update()
+                    b.wmconv.requires_grad_(False)
+                    b.torgb.requires_grad_(False)
                 elif isinstance(b, SkipArchitecture):
-                    b.wmconv1.disable_update()
-                    b.wmconv2.disable_update()
-                    b.torgb.disable_update()
+                    b.wmconv1.requires_grad_(False)
+                    b.wmconv2.requires_grad_(False)
+                    b.torgb.requires_grad_(False)
 
     def transfer(self, source, levels=[]):
         for (i, dest), (j, src) in zip(reversed(list(self.synthesizer.blocks)), reversed(list(source.synthesizer.blocks))):
@@ -164,116 +161,37 @@ class Generator(Chain):
                     if not isinstance(src, InitialSkipArchitecture):
                         eprint("Network architecture doesn't match!")
                         raise RuntimeError("Model error")
-                    dest.wmconv.copyparams(src.wmconv)
-                    dest.torgb.copyparams(src.torgb)
+                    dest.wmconv.load_state_dict(src.wmconv.state_dict())
+                    dest.torgb.load_state_dict(src.torgb.state_dict())
                 elif isinstance(dest, SkipArchitecture):
                     if not isinstance(src, SkipArchitecture):
                         eprint("Network architecture doesn't match!")
                         raise RuntimeError("Model error")
-                    dest.wmconv1.copyparams(src.wmconv1)
-                    dest.wmconv2.copyparams(src.wmconv2)
-                    dest.torgb.copyparams(src.torgb)
+                    dest.wmconv1.load_state_dict(src.wmconv1.state_dict())
+                    dest.wmconv2.load_state_dict(src.wmconv2.state_dict())
+                    dest.torgb.load_state_dict(src.torgb.state_dict())
                 else:
                     raise RuntimeError()
 
     def save(self, filepath):
-        with HDF5File(filepath, "w") as hdf5:
-            HDF5Serializer(hdf5).save(self)
-            self.embed_params(hdf5)
+        torch.save({"format_version": 1, "params": self.model_params(), "state_dict": self.state_dict()}, filepath)
 
-    def embed_params(self, hdf5):
-        hdf5.attrs["size"] = self.size
-        hdf5.attrs["depth"] = self.depth
-        hdf5.attrs["levels"] = self.levels
-        hdf5.attrs["first_channels"] = self.first_channels
-        hdf5.attrs["last_channels"] = self.last_channels
-        hdf5.attrs["categories"] = self.categories
-        hdf5.attrs["labels"] = self.labels
-
-    @staticmethod
-    def load(filepath):
-        with HDF5File(filepath, "r") as hdf5:
-            params = Generator.read_params(hdf5)
-            generator = Generator(**params)
-            HDF5Deserializer(hdf5).load(generator)
-            return generator
-
-    @staticmethod
-    def read_params(hdf5):
+    def model_params(self):
         return {
-            "size": int(hdf5.attrs["size"]),
-            "depth": int(hdf5.attrs["depth"]),
-            "levels": int(hdf5.attrs["levels"]),
-            "first_channels": int(hdf5.attrs["first_channels"]),
-            "last_channels": int(hdf5.attrs["last_channels"]),
-            "categories": int(hdf5.attrs["categories"]),
-            "labels": [str(l) for l in hdf5.attrs["labels"]],
+            "size": self.size,
+            "depth": self.depth,
+            "levels": self.levels,
+            "first_channels": self.first_channels,
+            "last_channels": self.last_channels,
+            "categories": self.categories,
+            "labels": list(self.labels),
         }
 
-
-class Discriminator(Chain):
-
-    def __init__(self, levels=7, first_channels=16, last_channels=512, categories=1, depth=8, group_size=None):
-        super().__init__()
-        in_channels = [first_channels] * (levels - 1)
-        out_channels = [last_channels] * (levels - 1)
-        for i in range(1, levels - 1):
-            channels = min(first_channels * 2**i, last_channels)
-            in_channels[i] = channels
-            out_channels[i - 1] = channels
-        with self.init_scope():
-            self.main = Sequential(
-                FromRGB(first_channels),
-                *[ResidualBlock(i, o) for i, o in zip(in_channels, out_channels)],
-                OutputBlock(last_channels, categories > 1, group_size),
-            )
-            if categories > 1:
-                self.embedder = EqualizedLinear(categories, last_channels, gain=1)
-                self.mapper = Sequential(EqualizedLinear(last_channels, last_channels), LeakyRelu()).repeat(depth)
-
-    def __call__(self, x, c=None):
-        if c is not None:
-            embedded = self.embedder(c)
-            normalized = embedded / sqrt(mean(embedded**2, axis=1, keepdims=True) + 1e-08)
-            c1 = self.mapper(normalized)
-        h = self.main(x)
-        batch, channels = h.shape
-        return h.reshape(batch) if c is None else sum(h * c1, axis=1) / root(channels)
-
-    def freeze(self, levels=[]):
-        for i, b in self.blocks:
-            if i in levels:
-                if isinstance(b, FromRGB):
-                    b.disable_update()
-                elif isinstance(b, ResidualBlock):
-                    b.disable_update()
-                elif isinstance(b, OutputBlock):
-                    b.conv1.disable_update()
-                    b.conv2.disable_update()
-
-    def transfer(self, source, levels=[]):
-        for (i, dest), (j, src) in zip(self.blocks, source.blocks):
-            if i in levels:
-                if isinstance(dest, FromRGB):
-                    if not isinstance(src, FromRGB):
-                        eprint("Network architecture doesn't match!")
-                        raise RuntimeError("Model error")
-                    dest.copyparams(src)
-                elif isinstance(dest, ResidualBlock):
-                    if not isinstance(src, ResidualBlock):
-                        eprint("Network architecture doesn't match!")
-                        raise RuntimeError("Model error")
-                    dest.copyparams(src)
-                elif isinstance(dest, OutputBlock):
-                    if not isinstance(src, OutputBlock):
-                        eprint("Network architecture doesn't match!")
-                        raise RuntimeError("Model error")
-                    dest.conv1.copyparams(src.conv1)
-                    dest.conv2.copyparams(src.conv2)
-                else:
-                    raise RuntimeError()
-
-    @property
-    def blocks(self):
-        for i, s in enumerate(self.main):
-            yield i, s
+    @staticmethod
+    def load(filepath, device="cpu"):
+        checkpoint = torch.load(filepath, map_location="cpu", weights_only=True)
+        if checkpoint["format_version"] != 1:
+            raise ValueError("Unsupported generator checkpoint format")
+        generator = Generator(**checkpoint["params"])
+        generator.load_state_dict(checkpoint["state_dict"])
+        return generator.to(device).eval()

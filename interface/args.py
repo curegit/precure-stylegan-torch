@@ -14,7 +14,7 @@ class CustomArgumentParser(ArgumentParser):
         super().__init__(allow_abbrev=False, description=description, formatter_class=ArgumentDefaultsHelpFormatter)
 
     def require_generator(self):
-        self.add_argument("generator", metavar="GEN_FILE", help="HDF5 file of a serialized trained generator")
+        self.add_argument("generator", metavar="GEN_FILE", help="PyTorch checkpoint (.pt) of a serialized trained generator")
         return self
 
     def add_output_args(self, default_dest):

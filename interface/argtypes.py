@@ -1,6 +1,6 @@
 from sys import float_info
 from math import isfinite
-from chainer.backend import CpuDevice, GpuDevice
+from torch import device as TorchDevice
 
 
 def uint(string):
@@ -47,18 +47,18 @@ def rate(string):
 
 def device(string):
     value = string.upper()
-    if value == "CPU" or value == "@NUMPY":
-        return CpuDevice()
-    if value[:6] == "@CUPY:":
-        return GpuDevice.from_device_id(int(value[6:]))
-    if value == "GPU" or value == "@CUPY":
-        return GpuDevice.from_device_id(0)
+    if value in ("CPU", "-1"):
+        return TorchDevice("cpu")
+    if value == "MPS":
+        return TorchDevice("mps")
+    if value in ("GPU", "CUDA"):
+        return TorchDevice("cuda", 0)
+    if value.startswith("CUDA:"):
+        value = value[5:]
     try:
-        value = int(string)
+        value = int(value)
     except Exception:
         raise ValueError() from None
     if value >= 0:
-        return GpuDevice.from_device_id(value)
-    if value == -1:
-        return CpuDevice()
+        return TorchDevice("cuda", value)
     raise ValueError()

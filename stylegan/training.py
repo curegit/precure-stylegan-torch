@@ -9,7 +9,8 @@ from chainer.training.extensions import PrintReport, LogReport, PlotReport, Prog
 from chainer.functions import sqrt, sign, softplus, sum, mean, batch_l2_norm_squared, stack, concat, split_axis
 from chainer.optimizers import Adam
 from chainer.serializers import HDF5Serializer, HDF5Deserializer
-from stylegan.networks import Generator, Discriminator
+from stylegan.networks import Generator
+from stylegan.layers.discriminator import Discriminator
 from utilities.iter import range_batch, iter_batch
 from utilities.math import identity, sgn, clamp, lerp
 from utilities.image import save_image

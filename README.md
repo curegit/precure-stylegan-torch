@@ -1,6 +1,8 @@
 # Precure StyleGAN ADA
 
-StyleGAN 2.0 implementation using Chainer with Adaptive Discriminator Augmentation
+StyleGAN 2.0 implementation with Adaptive Discriminator Augmentation, migrating from Chainer to PyTorch.
+
+Generator inference through `generate.py` and model inspection through `show.py` now use PyTorch and `.pt` checkpoints. During migration, training and the other inference scripts have not yet been ported to work with the new Generator. Convert the bundled HDF5 generators with `tools/convert_hdf5.py` before passing them to these scripts.
 
 ## Abstract
 
@@ -15,10 +17,9 @@ We also trained the models on other common datasets, demonstrating the stability
 ## Requirements
 
 - Python >= 3.14
-- Chainer >= 7.2
+- PyTorch >= 2.6
 - Pillow >= 9.1
 - NumPy >= 1.17
-- h5py
 - tqdm
 
 Use `requirements.txt` to install minimal dependencies for inferencing.
@@ -29,6 +30,8 @@ pip3 install -r requirements.txt
 
 ### For training
 
+- Chainer >= 7.2 (training has not yet been ported to PyTorch)
+- h5py
 - CuPy (with CUDA & cuDNN)
 - Matplotlib
 
@@ -47,11 +50,24 @@ We provide these pre-trained generators on common datasets in the `models` folde
 - MNIST (conditional)
 - Kuzushiji-49 (conditional)
 
-You can quickly try them out like this.
+Convert a generator to `.pt` and run it like this. h5py is needed only for conversion, and Chainer is not required:
 
 ```sh
-python3 generate.py models/afhq.hdf5 -o output
+python3 -m pip install -r tools/requirements-convert.txt
+python3 tools/convert_hdf5.py models/afhq.hdf5 -o models/afhq.pt
+python3 generate.py models/afhq.pt -o output
 ```
+
+For MNIST, convert the bundled model and generate images of the digit 7:
+
+```sh
+python3 tools/convert_hdf5.py models/mnist.hdf5 -o models/mnist.pt
+python3 generate.py models/mnist.pt -n 10 -l seven --fixed 0 -o output-mnist
+```
+
+The converter preserves architecture, labels, and learned tensors, and rejects missing, extra, or incompatible weights. By default it writes next to the input with a `.pt` extension; use `-o` to choose a path and `--force` to replace an existing output. It accepts standalone Generator files, not training snapshots.
+
+If a model with Mapper depth greater than 2 was converted using the earlier converter, regenerate its `.pt` file with `--force`. The earlier version assumed ascending Mapper weight names, but legacy Chainer Sequential stores the later dense layers in reverse order. FFHQ conversion is now checked against independent Chainer reference outputs.
 
 ## Results
 
@@ -121,12 +137,12 @@ For this training, we used Mode Seeking Regularization (MSGAN) due to problems a
 
 ### `show.py`
 
-This script shows information of a trained generator.
+This script shows the architecture, total parameter count, CNN channels at each level, and class labels of a trained PyTorch generator checkpoint (`.pt`). Inspection runs on CPU and does not require Chainer, h5py, or a GPU.
 
 For example, to check the MNIST model, use:
 
 ```sh
-python3 show.py models/mnist.hdf5
+python3 show.py models/mnist.pt
 ```
 
 ### `generate.py`
@@ -137,8 +153,12 @@ Use the `-h` option for more details.
 For example, to generate 100 dog images in the `output` folder using the AFHQ model, type:
 
 ```sh
-python3 generate.py models/afhq.hdf5 -n 100 -l dog -o output
+python3 generate.py models/afhq.pt -n 100 -l dog -o output
 ```
+
+`Generator.save(path)` writes a PyTorch checkpoint containing `format_version`, `params` (architecture and labels), and `state_dict` (learned tensors). `Generator.load(path, device="cpu")` reconstructs the model for inference without Chainer or h5py. Latent and style vectors continue to use `.npy` files.
+
+Run the Generator, conversion, and CLI tests with `python3 -m pytest tests` (pytest is a development dependency). Conversion tests require h5py and use the bundled MNIST model.
 
 ### `combine.py`
 
@@ -148,14 +168,14 @@ Use the `-h` option for more details.
 Example 1: To average two cats:
 
 ```sh
-python3 generate.py models/afhq.hdf5 -n 2 -l cat -t 0.8 -o cats
+python3 generate.py models/afhq.pt -n 2 -l cat -t 0.8 -o cats
 python3 combine.py models/afhq.hdf5 -n 1 cats/1-style.npy cats/2-style.npy -c 0.5 0.5 -o new-cat
 ```
 
 Example 2: To generate 3 human face images and add the style vector difference from image 2 to image 3 to image 1:
 
 ```sh
-python3 generate.py models/ffhq.hdf5 -n 3 -t 0.8 -o faces
+python3 generate.py models/ffhq.pt -n 3 -t 0.8 -o faces
 python3 combine.py models/ffhq.hdf5 -n 1 faces/1-style.npy faces/2-style.npy faces/3-style.npy -c 1 -1 1 -o new-face
 ```
 
@@ -167,7 +187,7 @@ Use the `-h` option for additional details.
 For instance, to generate 2 anime face images and mix them, use:
 
 ```sh
-python3 generate.py models/anime.hdf5 -n 2 -o anime
+python3 generate.py models/anime.pt -n 2 -o anime
 python3 mix.py models/anime.hdf5 -n 1 anime/1-style.npy ... ... anime/2-style.npy -o anime-mix
 ```
 
@@ -224,7 +244,7 @@ Here are some examples of Cure Twinkle transferred from Cure Beauty v2, which wa
 
 ### Small Tools
 
-- `tools/check.py` analyzes the Chainer environment.
+- `tools/check_env.py` reports the PyTorch environment, including Python, OS, CUDA, cuDNN, GPU, and installed package versions.
 - `tools/tile.py` creates an N by M tiled image matrix.
 
 ## See Also

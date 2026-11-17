@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 
 from sys import exit
+import torch
 from stylegan.networks import Generator
 from interface.args import CustomArgumentParser
 from interface.stdout import chainer_like_tqdm
@@ -9,17 +10,15 @@ from utilities.image import save_image
 from utilities.stdio import eprint
 from utilities.filesys import mkdirs, open_filepath_write
 from utilities.numpy import load, save
-from utilities.chainer import to_variable, config_valid
 
 
+@torch.inference_mode()
 def main(args):
-    config_valid()
     print("Loading a model...")
-    generator = Generator.load(args.generator)
-    generator.to_device(args.device)
+    generator = Generator.load(args.generator, device=args.device)
     if args.center is not None:
         print("Loading a latent vector...")
-        center = to_variable(load(args.center), device=args.device)
+        center = torch.as_tensor(load(args.center), device=args.device, dtype=next(generator.parameters()).dtype)
     else:
         center = None
     if args.classes is not None or args.labels is not None:
@@ -47,17 +46,17 @@ def main(args):
             k, c = generator.generate_conditions(n, categories=categories) if generator.conditional else (None, None)
             mw = mean_w[k] if mean_w is not None and mean_w.ndim == 2 else mean_w
             ws, y = generator(z, c, psi=args.psi, mean_w=mw, noise=args.noisy, fixed=args.fixed)
-            z.to_cpu()
-            y.to_cpu()
-            ws[0].to_cpu()
+            z = z.cpu().numpy()
+            y = y.cpu().numpy()
+            w = ws[0].cpu().numpy()
             for j in range(n):
                 filename = f"{i + j + 1}"
                 with open_filepath_write(args.dest, filename + "-latent", "npy", args.force) as fp:
-                    save(fp, z.array[j])
+                    save(fp, z[j])
                 with open_filepath_write(args.dest, filename + "-style", "npy", args.force) as fp:
-                    save(fp, ws[0].array[j])
+                    save(fp, w[j])
                 with open_filepath_write(args.dest, filename, "png", args.force) as fp:
-                    save_image(y.array[j], fp)
+                    save_image(y[j], fp)
                 bar.update()
 
 

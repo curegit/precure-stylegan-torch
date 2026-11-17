@@ -20,12 +20,13 @@ def print_data_classes(generator):
 
 
 def print_parameter_counts(generator, discriminator=None):
+    generator_params = sum(parameter.numel() for parameter in generator.parameters())
     if discriminator is None:
-        print(f"Parameter counts: {generator.count_params()}")
+        print(f"Parameter counts: {generator_params}")
     else:
         print("Parameter counts:")
-        print(f"- G: {generator.count_params()}")
-        print(f"- D: {discriminator.count_params()}")
+        print(f"- G: {generator_params}")
+        print(f"- D: {sum(parameter.numel() for parameter in discriminator.parameters())}")
 
 
 def print_cnn_architecture(generator, discriminator=None, transfer=None, freeze=None):

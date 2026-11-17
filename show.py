@@ -9,7 +9,7 @@ from utilities.stdio import eprint
 
 def main(args):
     print("Loading a model...")
-    generator = Generator.load(args.generator)
+    generator = Generator.load(args.generator, device="cpu")
     print_model_args(generator)
     print_parameter_counts(generator)
     print_cnn_architecture(generator)
@@ -17,7 +17,7 @@ def main(args):
 
 
 def parse_args():
-    parser = CustomArgumentParser("Show model arguments and data classes of a serialized generator")
+    parser = CustomArgumentParser("Show architecture, parameter counts and data classes of a PyTorch generator checkpoint (.pt)")
     parser.require_generator()
     return parser.parse_args()
 
