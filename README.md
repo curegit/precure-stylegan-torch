@@ -196,12 +196,19 @@ python3 mix.py models/anime.pt -n 1 anime/1-style.npy ... ... anime/2-style.npy 
 ### `animate.py`
 
 This script makes an animation of the analogy using a trained generator.
+It accepts PyTorch `.pt` checkpoints and writes an animated PNG (`analogy.png`), with optional GIF (`--gif`) and WebP (`--webp`) output. Use `--prepend` and `--append` with existing `.npy` style vectors, including Chainer exports, and `-n 0` to animate only those styles. `--loop` interpolates back to the first style, while `--repeat` sets the output animation's repeat flag. `--frames` also saves individual frame images.
 Use the `-h` option for more details.
 
 For example, to create an animation that interpolates 10 face samples using the FFHQ model, use:
 
 ```sh
-python3 animate.py models/ffhq.hdf5 -n 10 -L -o analogy
+python3 animate.py models/ffhq.pt -n 10 -L -o analogy
+```
+
+To animate between two saved styles with fixed noise and additional GIF output:
+
+```sh
+python3 animate.py models/ffhq.pt -n 0 -P faces/1-style.npy -A faces/2-style.npy -I 15 --fixed 0 -L -R -G -o style-animation
 ```
 
 ### `train.py`

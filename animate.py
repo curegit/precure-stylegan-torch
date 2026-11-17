@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 
+import torch
 from sys import exit
-from chainer.functions import stack
 from stylegan.networks import Generator
 from interface.args import CustomArgumentParser
 from interface.argtypes import uint, natural
@@ -11,7 +11,6 @@ from utilities.image import to_pil_image, save_image
 from utilities.stdio import eprint
 from utilities.filesys import mkdirs, open_filepath_write
 from utilities.numpy import load, save
-from utilities.chainer import to_variable, config_valid
 
 
 def interpolate(ws, middles=15, loop=True, closed=True):
@@ -25,25 +24,33 @@ def interpolate(ws, middles=15, loop=True, closed=True):
         yield ws[n - 1]
 
 
+@torch.inference_mode()
 def main(args):
-    config_valid()
     print("Loading a model...")
-    generator = Generator.load(args.generator)
-    generator.to_device(args.device)
+    generator = Generator.load(args.generator, device=args.device)
+    dtype = next(generator.parameters()).dtype
+
+    def load_style(filepath):
+        style = load(filepath)
+        if style.shape != (generator.size,):
+            eprint(f"Invalid style vector: {filepath}; expected shape {(generator.size,)}, got {style.shape}")
+            raise RuntimeError("Input error")
+        return torch.as_tensor(style, device=args.device, dtype=dtype)
+
     if args.center is not None:
         print("Loading a latent vector...")
-        center = to_variable(load(args.center), device=args.device)
+        center = torch.as_tensor(load(args.center), device=args.device, dtype=dtype)
     else:
         center = None
     if args.prepend is not None:
         print("Loading prepended styles...")
-        prepend = [to_variable(load(s), device=args.device) for s in args.prepend]
+        prepend = [load_style(s) for s in args.prepend]
         print(f"Prepended styles: {len(prepend)}")
     else:
         prepend = []
     if args.append is not None:
         print("Loading appended styles...")
-        append = [to_variable(load(s), device=args.device) for s in args.append]
+        append = [load_style(s) for s in args.append]
         print(f"Appended styles: {len(append)}")
     else:
         append = []
@@ -77,28 +84,27 @@ def main(args):
                 sampled_ws += [w[i] for i in range(n)]
                 if not args.no_samples:
                     y = generator.synthesizer([w] * generator.levels, noise=args.noisy, fixed=args.fixed)
-                    z.to_cpu()
-                    w.to_cpu()
-                    y.to_cpu()
+                    saved_z = z.cpu().numpy()
+                    saved_w = w.cpu().numpy()
+                    saved_y = y.cpu().numpy()
                     for j in range(n):
                         filename = f"{i + j + 1}"
                         with open_filepath_write(args.dest, filename + "-latent", "npy", args.force) as fp:
-                            save(fp, z.array[j])
+                            save(fp, saved_z[j])
                         with open_filepath_write(args.dest, filename + "-style", "npy", args.force) as fp:
-                            save(fp, w.array[j])
+                            save(fp, saved_w[j])
                         with open_filepath_write(args.dest, filename, "png", args.force) as fp:
-                            save_image(y.array[j], fp)
-                        bar.update()
+                            save_image(saved_y[j], fp)
+                bar.update(n)
     ws = prepend + sampled_ws + append
     frame_ws = list(interpolate(ws, args.interpolate, args.loop))
     count = 0
     images = []
     with chainer_like_tqdm(desc="frames", total=len(frame_ws)) as bar:
         for ws in iter_batch(frame_ws, args.batch):
-            y = generator.synthesizer([stack(list(ws))] * generator.levels, noise=args.noisy, fixed=args.fixed)
-            y.to_cpu()
+            y = generator.synthesizer([torch.stack(list(ws))] * generator.levels, noise=args.noisy, fixed=args.fixed).cpu().numpy()
             for i in range(y.shape[0]):
-                image = to_pil_image(y.array[i])
+                image = to_pil_image(y[i])
                 images.append(image)
                 if args.frames:
                     filename = f"frame-{count + 1}"
