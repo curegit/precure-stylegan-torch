@@ -1,8 +1,8 @@
 # Project specific
-*.pdf
 *.json
 *.log
 *.npy
+*.pt
 *.hdf5
 *.png
 *.gif
@@ -13,6 +13,7 @@
 *.tif
 *.tiff
 !/examples/**/*.png
+!/models/**/*.pt
 !/models/**/*.hdf5
 
 # Byte-compiled / optimized / DLL files
