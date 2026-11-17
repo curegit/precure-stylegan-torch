@@ -1,4 +1,4 @@
 torch >= 2.6
 pillow >= 9.1
-numpy >= 1.17
+numpy >= 2.3
 tqdm

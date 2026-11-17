@@ -19,7 +19,7 @@ We also trained the models on other common datasets, demonstrating the stability
 - Python >= 3.14
 - PyTorch >= 2.6
 - Pillow >= 9.1
-- NumPy >= 1.17
+- NumPy >= 2.3
 - tqdm
 
 Install the inference dependencies with:
@@ -129,7 +129,7 @@ For this training, we used Mode Seeking Regularization (MSGAN) due to problems a
 
 ### `show.py`
 
-This script shows the architecture, total parameter count, CNN channels at each level, and class labels of a trained PyTorch generator checkpoint (`.pt`). Inspection runs on CPU and does not require Chainer, h5py, or a GPU.
+This script shows the architecture, total parameter count, CNN channels at each level, and class labels of a trained PyTorch generator checkpoint (`.pt`).
 
 For example, to check the MNIST model, use:
 
