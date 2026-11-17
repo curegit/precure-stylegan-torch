@@ -1,8 +1,8 @@
-# Precure StyleGAN ADA
+# Precure StyleGAN ADA (PyTorch ver.)
 
-StyleGAN 2.0 implementation with Adaptive Discriminator Augmentation, migrating from Chainer to PyTorch.
+StyleGAN 2.0 implementation with Adaptive Discriminator Augmentation
 
-Generator inference through `generate.py` and model inspection through `show.py` now use PyTorch and `.pt` checkpoints. During migration, training and the other inference scripts have not yet been ported to work with the new Generator. Convert the bundled HDF5 generators with `tools/convert_hdf5.py` before passing them to these scripts.
+This project was ported from [Chainer implementation](https://github.com/curegit/precure-stylegan-ada) to continue with further maintenance.
 
 ## Abstract
 
