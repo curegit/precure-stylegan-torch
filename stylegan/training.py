@@ -3,10 +3,12 @@ import math
 import time
 import random
 import os.path
-from importlib.util import find_spec
-from contextlib import contextmanager
 import numpy as np
 import torch
+import torch.mps
+import torch.cuda
+from importlib.util import find_spec
+from contextlib import contextmanager
 from torch.nn import functional as F
 from tqdm import tqdm
 from stylegan.networks import Generator, Discriminator
@@ -401,7 +403,7 @@ class CustomTrainer:
         self.report_path = build_filepath(self.out, "report", "log", self.overwrite)
         self.curves_path = build_filepath(self.out, "curves", "png", self.overwrite)
 
-    def enable_progress_bar(self, interval=1):
+    def enable_progress_bar(self):
         self.progress = True
 
     def hook_state_save(self, interval):
@@ -428,8 +430,8 @@ class CustomTrainer:
                     self.save_snapshot(self)
                     self.save_generator(self)
                 bar.update()
-        if self.pending_reports:
-            self.write_report(time.monotonic() - started)
+            if self.pending_reports:
+                self.write_report(time.monotonic() - started)
 
     def write_report(self, elapsed):
         entries = {key for observation in self.pending_reports for key in observation}
@@ -448,7 +450,7 @@ class CustomTrainer:
 
         figure, axes = plt.subplots()
         for key in ("loss (G)", "loss (D)", "penalty (G)", "penalty (D)", "overfitting"):
-            axes.plot([r["iteration"] for r in self.records], [r[key] for r in self.records], label=key)
+            axes.plot([r["iteration"] for r in self.records], [r[key] for r in self.records], label=key, marker="x")
         axes.set_xlabel("iteration")
         axes.legend()
         figure.savefig(self.curves_path)

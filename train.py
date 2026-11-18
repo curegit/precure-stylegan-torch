@@ -99,7 +99,7 @@ def main(args):
     if args.print != 0:
         trainer.enable_reports(args.print)
     if not args.nobar:
-        trainer.enable_progress_bar(1)
+        trainer.enable_progress_bar()
     if args.quit:
         print("Quit")
         exit(0)
