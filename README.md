@@ -249,6 +249,7 @@ python3 train.py -e 50 -s training-result/snapshot.pt -o training-result-resumed
 ```
 
 Snapshots restore network weights, Adam states (including learning rates and betas), EMA, iteration, path length/ADA statistics, data ordering and random states.
+The network architecture (latent size, mapper depth, levels, and channel counts) is also taken from the snapshot, so `-z`, `-d`, `-x`, and `-c` are not used on resume.
 Pass the same dataset directories in the same order and keep the batch size unchanged.
 Other training settings (regularization, accumulation/group sizes, ADA, freezing and reporting) must be passed again.
 Specify the additional training length with `-e`, not the total duration.
