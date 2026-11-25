@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 
-from sys import exit
 import torch
+from sys import exit
 from stylegan.networks import Generator
 from interface.args import CustomArgumentParser
 from interface.stdout import chainer_like_tqdm

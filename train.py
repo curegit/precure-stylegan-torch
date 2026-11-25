@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
 
+import torch
 from sys import exit, argv
 from os.path import basename, realpath
 from copy import deepcopy
-import torch
 from stylegan.dataset import ImageDataset, MulticategoryImageDataset, TrainingIterator
 from stylegan.networks import Generator, Discriminator
 from stylegan.training import AdamSet, CustomUpdater, CustomTrainer
