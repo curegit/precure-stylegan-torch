@@ -191,10 +191,13 @@ class CustomUpdater:
             if self.mode_seeking_regularization():
                 z1, z2 = z.chunk(2, dim=0)
                 x1, x2 = x_fake.chunk(2, dim=0)
-                lms = self.distance_ratio(z1, x1, z2, x2).sum() / (self.batch_size / 2)
+                ratio_sum = self.distance_ratio(z1, x1, z2, x2).sum()
+                # Reciprocal of this partial mean, weighted by its share of the batch.
+                # A reciprocal taken after dividing by the full batch scales with the square of the split count.
+                lms = ratio_sum / (group_size / 2)
                 weight = self.mode_seeking_regularization_lambda * self.mode_seeking_regularization_interval
-                penalty = penalty + weight / (lms + 1e-8)
-                accumulated_distance_ratio += lms.item()
+                penalty = penalty + (group_size / self.batch_size) * weight / (lms + 1e-8)
+                accumulated_distance_ratio += ratio_sum.item() / (self.batch_size / 2)
             accumulated_penalty += penalty.item() if isinstance(penalty, torch.Tensor) else penalty
             loss = (self.generator_least_squares_loss(y_fake) if self.lsgan else self.generator_logistic_loss(y_fake)) / self.batch_size
             accumulated_loss += loss.item()
