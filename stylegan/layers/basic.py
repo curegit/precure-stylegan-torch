@@ -1,7 +1,7 @@
+import torch
 from math import sqrt
 from numpy import float32
 from numpy.random import Generator, PCG64
-import torch
 from torch import nn
 from torch.nn import functional as F
 

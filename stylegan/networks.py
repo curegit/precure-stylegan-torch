@@ -1,6 +1,6 @@
+import torch
 from math import sqrt as root
 from random import randint
-import torch
 from torch import nn
 from torch.nn import functional as F
 from stylegan.layers.basic import GaussianDistribution, LeakyRelu, EqualizedLinear

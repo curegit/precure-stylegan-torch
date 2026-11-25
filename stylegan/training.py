@@ -9,8 +9,8 @@ import torch.mps
 import torch.cuda
 from importlib.util import find_spec
 from contextlib import contextmanager
-from torch.nn import functional as F
 from tqdm import tqdm
+from torch.nn import functional as F
 from stylegan.networks import Generator, Discriminator
 from utilities.iter import range_batch
 from utilities.math import identity, sgn, clamp, lerp

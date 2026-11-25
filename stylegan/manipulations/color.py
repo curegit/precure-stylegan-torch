@@ -1,7 +1,7 @@
+import torch
 from math import sqrt, log, sin, cos, pi
 from numpy import array, eye, outer, stack, float32
 from numpy.random import uniform, normal, lognormal
-import torch
 from stylegan.manipulations.base import Manipulation
 
 identity = eye(4, dtype=float32)

@@ -1,6 +1,6 @@
+import torch
 from math import sqrt as root
 from numpy import array, sinc, float32
-import torch
 from torch import nn
 from torch.nn import functional as F
 from stylegan.layers.basic import LeakyRelu, EqualizedLinear, EqualizedConvolution2D, symmetric_pad2d

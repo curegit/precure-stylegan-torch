@@ -1,7 +1,7 @@
+import torch
 from os.path import lexists, isdir
 from bisect import bisect_right
 from itertools import accumulate
-import torch
 from torch.utils.data import Dataset, DataLoader, Sampler
 from utilities.stdio import eprint
 from utilities.image import load_image, load_image_uint8, uint8_to_float

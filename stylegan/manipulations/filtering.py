@@ -1,8 +1,8 @@
+import torch
 from math import log
 from numpy import ones, sqrt, where, float32
 from numpy.fft import fftfreq
 from numpy.random import uniform, lognormal
-import torch
 from stylegan.manipulations.base import Manipulation
 
 

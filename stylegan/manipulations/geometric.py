@@ -1,7 +1,7 @@
+import torch
 from math import sqrt, log, sin, cos, pi
 from numpy import array, eye, stack, float32
 from numpy.random import uniform, normal, lognormal
-import torch
 from stylegan.layers.basic import symmetric_pad2d
 from stylegan.manipulations.base import Manipulation
 

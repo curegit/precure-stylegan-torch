@@ -1,5 +1,5 @@
-from numpy import array, pad as padded, float32
 import torch
+from numpy import array, pad as padded, float32
 from torch import nn
 from torch.nn import functional as F
 from stylegan.layers.basic import GaussianDistribution, LeakyRelu, EqualizedLinear, symmetric_pad2d
