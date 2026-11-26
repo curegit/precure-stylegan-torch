@@ -16,7 +16,9 @@ from utilities.filesys import mkdirs, build_filepath
 
 
 def main(args):
+    torch.backends.cudnn.deterministic = True
     torch.backends.cudnn.benchmark = True
+
     print("Initializing models...")
     categories = len(args.dataset)
     if args.snapshot is not None:
