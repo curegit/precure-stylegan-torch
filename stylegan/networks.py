@@ -156,7 +156,7 @@ class Generator(nn.Module):
                     b.torgb.requires_grad_(False)
 
     def transfer(self, source, levels=[]):
-        for (i, dest), (j, src) in zip(reversed(list(self.synthesizer.blocks)), reversed(list(source.synthesizer.blocks))):
+        for (i, dest), (_, src) in zip(reversed(list(self.synthesizer.blocks)), reversed(list(source.synthesizer.blocks))):
             if i in levels:
                 if isinstance(dest, InitialSkipArchitecture):
                     if not isinstance(src, InitialSkipArchitecture):
@@ -189,13 +189,14 @@ class Generator(nn.Module):
         }
 
     @staticmethod
-    def load(filepath, device="cpu"):
+    def load(filepath, device="cpu", eval=True):
         checkpoint = torch.load(filepath, map_location="cpu", weights_only=True)
         if checkpoint["format_version"] != 1:
             raise ValueError("Unsupported generator checkpoint format")
         generator = Generator(**checkpoint["params"])
         generator.load_state_dict(checkpoint["state_dict"])
-        return generator.to(device).eval()
+        generator.to(device)
+        return generator.eval() if eval else generator
 
 
 class Discriminator(nn.Module):

@@ -83,7 +83,7 @@ class MulticategoryImageDataset(Dataset):
 class TrainingIterator(Sampler):
     """Shuffled, full batches across epoch boundaries, with resumable ordering.
 
-    Like the former SerialIterator, the last batch wraps into the next epoch;
+    Like the former SerialIterator (Chainer), the last batch wraps into the next epoch;
     no images are dropped and minibatch/accumulation group sizes stay constant.
     Loading runs in the main process so the saved cursor has no prefetched data.
     """

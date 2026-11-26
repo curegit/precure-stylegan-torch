@@ -47,10 +47,10 @@ Ready-to-use PyTorch generators are provided in `models/`:
 | Dataset | Checkpoint | Conditioning |
 | --- | --- | --- |
 | Flickr-Faces-HQ | `models/ffhq.pt` | Unconditional |
-| Animal Faces-HQ | `models/afhq.pt` | Conditional |
+| Animal Faces-HQ | `models/afhq.pt` | Conditional (3 classes) |
 | Anime Faces | `models/anime.pt` | Unconditional |
-| MNIST | `models/mnist.pt` | Conditional |
-| Kuzushiji-49 | `models/k49.pt` | Conditional |
+| MNIST | `models/mnist.pt` | Conditional (10 classes) |
+| Kuzushiji-49 | `models/k49.pt` | Conditional (49 classes) |
 
 For example, inspect the MNIST model and generate images of the digit 7:
 

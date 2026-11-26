@@ -401,7 +401,7 @@ class CustomTrainer:
 
     def enable_reports(self, interval):
         if interval and find_spec("matplotlib") is None:
-            raise RuntimeError("Training reports require Matplotlib; install requirements-training.txt or use --print-interval 0")
+            raise RuntimeError("Training reports require Matplotlib; install requirements-training.txt or use '--print-interval 0'")
         self.report_interval = interval
         self.report_path = build_filepath(self.out, "report", "log", self.overwrite)
         self.curves_path = build_filepath(self.out, "curves", "png", self.overwrite)
@@ -445,6 +445,7 @@ class CustomTrainer:
         with open(self.report_path, "w", encoding="utf-8") as fp:
             json.dump(self.records, fp, indent=2)
         tqdm.write("  ".join(f"{key}: {record[key]:.6g}" for key in ("iteration", "loss (G)", "loss (D)", "penalty (G)", "penalty (D)", "overfitting")))
+
         # Matplotlib is needed only for training reports, not for inference.
         import matplotlib
 
